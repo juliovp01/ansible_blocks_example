@@ -1,0 +1,64 @@
+---
+- hosts: webservers
+  become_method: sudo
+  tasks:
+    # This is an example of task outside a block in a playbook.
+    - name: Print message
+      sudo: yes
+      debug: msg="Installing Apache at {{ inventory_hostname }}" 
+    # The following are several tasks inside a block
+    - block: 
+        - name: Installing Apache
+          yum:
+            name: httpd
+            state: latest
+
+        - name: Copy index.html to /var/www/html/
+          sudo: yes
+          template: 
+            dest: /var/www/html/index.html
+            mode: 0755
+            group: root
+            owner: apache
+            src: index.html.j2  
+
+        - name: Restart Apache Service
+          service:
+            name: httpd
+            state: restarted
+            enabled: yes
+
+        - name: Opening Ports
+          firewalld:
+            permanent: yes
+            immediate: yes
+            port: 80/tcp
+            state: enabled
+
+        - name: Testing that Apache is  listening
+          uri:
+            url: http://{{inventory_hostname}}
+            return_content: yes
+          register: webresult
+          failed_when: "'Simple' not in webresult.content"
+
+      when:  ansible_os_family == 'RedHat'
+      become: yes
+      # The following is a rescue flow to recover from an install issue, cleaning all what the previous tasks did.
+      rescue:
+        - name: Stop service and disable
+          service:
+            name: httpd
+            state: stopped
+            enabled: no 
+        - name: Removing Apache
+          yum:
+            name: httpd
+            state: absent
+      # The Following will always run
+      always: 
+          
+        - name: Print message
+          sudo: yes
+          debug: msg="Playbook execution completed at {{ inventory_hostname }}" 
+...
